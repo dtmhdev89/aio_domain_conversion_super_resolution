@@ -8,20 +8,20 @@ VENV_BIN = $(VENV_NAME)/bin
 # Create virtual environment
 install_venv:
 	ifeq ($(PYTHON_VERSION),3.7)
-        apt-get install -y python3.7-venv
+		apt-get install -y python3.7-venv
 	else ifeq ($(PYTHON_VERSION),3.8)
-			apt-get install -y python3.8-venv
+		apt-get install -y python3.8-venv
 	else ifeq ($(PYTHON_VERSION),3.9)
-			apt-get install -y python3.9-venv
+		apt-get install -y python3.9-venv
 	else ifeq ($(PYTHON_VERSION),3.10)
-			apt-get install -y python3.10-venv
+		apt-get install -y python3.10-venv
 	else ifeq ($(PYTHON_VERSION),3.11)
-			apt-get install -y python3.11-venv
+		apt-get install -y python3.11-venv
 	else ifeq ($(PYTHON_VERSION),3.12)
-			apt-get install -y python3.12-venv
+		apt-get install -y python3.12-venv
 	else
-			@echo "Unsupported Python version: $(PYTHON_VERSION). Please install python3.x-venv manually."
-			exit 1
+		@echo "Unsupported Python version: $(PYTHON_VERSION). Please install python3.x-venv manually."
+		exit 1
 	endif
 
 venv:
