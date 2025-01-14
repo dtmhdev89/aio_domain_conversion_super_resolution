@@ -17,8 +17,16 @@ venv:
 
 # Library installation if not install by requirements.txt
 libs_install:
-	$(VENV_BIN)/$(PIP) install gdown memory_profiler numpy \
+	$(VENV_BIN)/$(PIP) install gdown matplotlib memory_profiler numpy \
+		ipykernel \
 		torch torcheval torchsummary torchvision
+
+	@if pgrep -af "jupyter-notebook" > /dev/null || pgrep -af "ipykernel" > /dev/null; then \
+		echo "Running in a Jupyter notebook environment"; \
+		$(VENV_BIN)/$(PIP) install ipykernel; \
+	else \
+		echo "Not running in a Jupyter notebook environment"; \
+	fi
 
 # Install dependencies by requirements.txt. This requires specific python version (3.12)
 install: requirements.txt
@@ -44,8 +52,8 @@ download_dataset:
 	rm Khoa_LHR_image.zip
 
 # Model
-run_unet_model: unet_model.py
-	$(VENV_BIN)/$(PYTHON) unet_model.py
+run_super_resolution: unet_model.py super_resolution_problem.py
+	$(VENV_BIN)/$(PYTHON) super_resolution_problem.py
 
 .PHONY: venv
 
