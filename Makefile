@@ -5,13 +5,16 @@ VENV_NAME = .venv
 VENV_BIN = $(VENV_NAME)/bin
 
 # Create virtual environment
+install_venv:
+	$(PYTHON) -m $(PIP) install virtualenv
+
 venv:
 	$(PYTHON) -m venv $(VENV_NAME)
 
 # Library installation if not install by requirements.txt
 libs_install:
 	$(VENV_BIN)/$(PIP) install gdown memory_profiler numpy \
-		torch torcheval torchsummary torchvision virtualenv
+		torch torcheval torchsummary torchvision
 
 # Install dependencies by requirements.txt. This requires specific python version (3.12)
 install: requirements.txt
