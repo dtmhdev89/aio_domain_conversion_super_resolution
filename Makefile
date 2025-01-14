@@ -11,7 +11,7 @@ venv:
 # Library installation if not install by requirements.txt
 libs_install:
 	$(VENV_BIN)/$(PIP) install gdown memory_profiler numpy \
-		torch torcheval torchsummary torchvision
+		torch torcheval torchsummary torchvision virtualenv
 
 # Install dependencies by requirements.txt. This requires specific python version (3.12)
 install: requirements.txt
