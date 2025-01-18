@@ -1,7 +1,6 @@
 import torch
-from torch import optim
 import torch.nn as nn
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset
 from PIL import Image
 from torchsummary import summary
 from torchvision import transforms
@@ -11,8 +10,13 @@ import numpy as np
 from torcheval.metrics.functional import peak_signal_noise_ratio
 import time
 import datetime
+import cv2
 
 torch.manual_seed(66)
+print('set torch seed')
+
+def get_device():
+    return "cuda:0" if torch.cuda.is_available() else "cpu"
 
 
 class SkipConfig(nn.Module):
@@ -201,8 +205,8 @@ class ImageDataset(Dataset):
     LOW_IMG_WIDTH = 64
 
     def __init__(self, img_dir, is_train=True):
-        self.resize = transforms.Resize((self.LOW_IMG_WIDTH, self.LOW_IMG_HEIGHT),
-                                        antialias=True)
+        image_shape = (self.LOW_IMG_WIDTH, self.LOW_IMG_HEIGHT)
+        self.resize = transforms.Resize(image_shape, antialias=True)
         self.is_train = is_train
         self.img_dir = img_dir
         self.images = os.listdir(img_dir)
@@ -232,8 +236,82 @@ class ImageDataset(Dataset):
         input_image, target_image = self.normalize(input_image=input_image,
                                                    target_image=target_image)
         if self.is_train:
-            input_image, target_image = self.random_jitter(input_image=input_image,
-                                                           target_image=target_image)
+            input_image, target_image = self.random_jitter(
+                input_image=input_image,
+                target_image=target_image
+            )
+
+        return input_image, target_image
+
+
+class ImageInpaintingDataset(Dataset):
+    IMG_HEIGHT = 256
+    IMG_WIDTH = 256
+
+    def __init__(self, img_dir, is_train=True):
+        self.is_train = is_train
+        self.img_dir = img_dir
+        self.images = os.listdir(img_dir)
+
+    def __len__(self):
+        return len(self.images)
+
+    def normalize(self, input_image, target_image):
+        input_image = input_image * 2 - 1
+        target_image = target_image * 2 - 1
+
+        return input_image, target_image
+
+    def random_jitter(self, input_image, target_image):
+        if torch.rand([]) < 0.5:
+            input_image = transforms.functional.hflip(input_image)
+            target_image = transforms.functional.hflip(target_image)
+
+        return input_image, target_image
+
+    def create_mask(self, image):
+        masked_image = image.copy()
+        # Prepare masking matrix
+        mask = np.full((self.IMG_WIDTH, self.IMG_HEIGHT, 3), 0, np.uint8)
+
+        for _ in range(np.random.randint(1, 5)):
+            # Get random x locations to start line
+            x1, x2 = (
+                np.random.randint(1, self.IMG_WIDTH),
+                np.random.randint(1, self.IMG_WIDTH)
+            )
+            # Get random y locations to start line
+            y1, y2 = (
+                np.random.randint(1, self.IMG_HEIGHT),
+                np.random.randint(1, self.IMG_HEIGHT)
+            )
+            # Get random thickness of the line drawn
+            thickness = np.random.randint(1, 15)
+            # Draw line on the black mask
+            cv2.line(mask, (x1, y1), (x2, y2), (1, 1, 1), thickness)
+
+        masked_image = np.where(mask, 255*np.ones_like(mask), masked_image)
+
+        return masked_image
+
+    def __getitem__(self, idx):
+        img_path = os.path.join(self.img_dir, self.images[idx])
+        image = np.array(Image.open(img_path).convert("RGB"))
+
+        input_image = self.create_mask(image)
+        input_image = transforms.functional.to_tensor(input_image)
+        target_image = transforms.functional.to_tensor(image)
+
+        input_image = input_image.type(torch.float32)
+        target_image = target_image.type(torch.float32)
+
+        input_image, target_image = self.normalize(input_image=input_image,
+                                                   target_image=target_image)
+        if self.is_train:
+            input_image, target_image = self.random_jitter(
+                input_image=input_image,
+                target_image=target_image
+            )
 
         return input_image, target_image
 
@@ -261,16 +339,41 @@ class SR_Unet(nn.Module):
         return x
 
 
+class II_Unet(nn.Module):
+    def __init__(self,
+                 n_channels=3,
+                 n_classes=3,
+                 skip_config=SkipConfig(use_skip=True)) -> None:
+        super(II_Unet, self).__init__()
+        self.unet = Unet(
+            n_channels=n_channels,
+            n_classes=n_classes,
+            skip_config=skip_config)
+
+    def forward(self, x):
+        x = self.unet(x)
+
+        return x
+
+
 def generate_images(model, inputs, labels, device='cpu'):
     model.eval()
     with torch.no_grad():
         inputs, labels = inputs.to(device), labels.to(device)
         predictions = model(inputs)
-    
-    inputs, labels, predictions = inputs.cpu().numpy(), labels.cpu().numpy(), predictions.cpu().numpy()
-    plt.figure(figsize=(15,20))
 
-    display_list = [inputs[-1].transpose((1, 2, 0)), labels[-1].transpose((1, 2, 0)), predictions[-1].transpose((1, 2, 0))]
+    inputs, labels, predictions = [
+                                    inputs.cpu().numpy(),
+                                    labels.cpu().numpy(),
+                                    predictions.cpu().numpy()
+                                  ]
+    plt.figure(figsize=(15, 20))
+
+    display_list = [
+        inputs[-1].transpose((1, 2, 0)),
+        labels[-1].transpose((1, 2, 0)),
+        predictions[-1].transpose((1, 2, 0))
+    ]
     title = ['Input', 'Real', 'Predicted']
 
     for i in range(3):
@@ -282,8 +385,8 @@ def generate_images(model, inputs, labels, device='cpu'):
     try:
         from IPython.display import Image as ipython_image
     except ImportError:
-        print("Not running in Jupyter Notebook. Saving image to 'predicted.png'.")
-        timestamp_format=""%Y%m%d_%H%M%S_%f""
+        print("Not running in Jupyter Notebook. Saving image.")
+        timestamp_format = "%Y%m%d_%H%M%S_%f"
         timestamp = datetime.datetime.now().strftime(timestamp_format)
         plt.savefig(f'predicted_{timestamp}.png')
         plt.close()
@@ -296,7 +399,7 @@ def train_epoch(model, optimizer, criterion, train_dataloader, device, epoch=0,
     model.train()
     total_psnr, total_count = 0, 0
     losses = []
-    start_time = time.time()
+    # start_time = time.time()
 
     for idx, (inputs, labels) in enumerate(train_dataloader):
         inputs = inputs.to(device)
@@ -317,7 +420,7 @@ def train_epoch(model, optimizer, criterion, train_dataloader, device, epoch=0,
         total_psnr += peak_signal_noise_ratio(predictions, labels)
         total_count += 1
         if idx % log_interval == 0 and idx > 0:
-            elapsed = time.time() - start_time
+            # elapsed = time.time() - start_time
             print(
                 "| epoch {:3d} | {:5d}/{:5d} batches "
                 "| psnr {:8.3f}".format(
@@ -325,7 +428,7 @@ def train_epoch(model, optimizer, criterion, train_dataloader, device, epoch=0,
                 )
             )
             total_psnr, total_count = 0, 0
-            start_time = time.time()
+            # start_time = time.time()
 
     epoch_psnr = total_psnr / total_count
     epoch_loss = sum(losses) / len(losses)
@@ -347,8 +450,7 @@ def evaluate_epoch(model, criterion, valid_dataloader, device):
             loss = criterion(predictions, labels)
             losses.append(loss.item())
 
-
-            total_psnr +=  peak_signal_noise_ratio(predictions, labels)
+            total_psnr += peak_signal_noise_ratio(predictions, labels)
             total_count += 1
 
     epoch_psnr = total_psnr / total_count
@@ -366,17 +468,19 @@ def train(model, model_name, save_model, optimizer,
     for epoch in range(1, num_epochs+1):
         epoch_start_time = time.time()
         # Training
-        train_psnr, train_loss = train_epoch(model, optimizer, criterion, train_dataloader, device, epoch)
+        train_psnr, train_loss = train_epoch(model, optimizer, criterion,
+                                             train_dataloader, device, epoch)
         train_psnrs.append(train_psnr.cpu())
         train_losses.append(train_loss)
 
         # Evaluation
-        eval_psnr, eval_loss = evaluate_epoch(model, criterion, valid_dataloader, device)
+        eval_psnr, eval_loss = evaluate_epoch(model, criterion,
+                                              valid_dataloader, device)
         eval_psnrs.append(eval_psnr.cpu())
         eval_losses.append(eval_loss)
 
         # Save best model
-        if best_psnr_eval < eval_psnr :
+        if best_psnr_eval < eval_psnr:
             torch.save(model.state_dict(), save_model + f'/{model_name}.pt')
             inputs_t, targets_t = next(iter(valid_dataloader))
             generate_images(model, inputs_t, targets_t, device=device)
@@ -385,14 +489,18 @@ def train(model, model_name, save_model, optimizer,
         # Print loss, psnr end epoch
         print("-" * 59)
         print(
-            "| End of epoch {:3d} | Time: {:5.2f}s | Train psnr {:8.3f} | Train Loss {:8.3f} "
+            "| End of epoch {:3d} | Time: {:5.2f}s "
+            "| Train psnr {:8.3f} | Train Loss {:8.3f} "
             "| Valid psnr {:8.3f} | Valid Loss {:8.3f} ".format(
-                epoch, time.time() - epoch_start_time, train_psnr, train_loss, eval_psnr, eval_loss
+                epoch, time.time() - epoch_start_time,
+                train_psnr, train_loss,
+                eval_psnr, eval_loss
             )
         )
         print("-" * 59)
 
     # Load best model
+    # Not a secure way to load model with a pretrained weights. Use safetensors instead
     model.load_state_dict(torch.load(save_model + f'/{model_name}.pt'))
     model.eval()
     metrics = {
@@ -405,13 +513,14 @@ def train(model, model_name, save_model, optimizer,
     return model, metrics
 
 
-def plot_result(num_epochs, train_psnrs, eval_psnrs, train_losses, eval_losses):
+def plot_result(num_epochs, train_psnrs,
+                eval_psnrs, train_losses, eval_losses):
     epochs = list(range(num_epochs))
-    fig, axs = plt.subplots(nrows = 1, ncols =2 , figsize = (12,6))
-    axs[0].plot(epochs, train_psnrs, label = "Training")
-    axs[0].plot(epochs, eval_psnrs, label = "Evaluation")
-    axs[1].plot(epochs, train_losses, label = "Training")
-    axs[1].plot(epochs, eval_losses, label = "Evaluation")
+    fig, axs = plt.subplots(nrows=1, ncols=2, figsize=(12, 6))
+    axs[0].plot(epochs, train_psnrs, label="Training")
+    axs[0].plot(epochs, eval_psnrs, label="Evaluation")
+    axs[1].plot(epochs, train_losses, label="Training")
+    axs[1].plot(epochs, eval_losses, label="Evaluation")
     axs[0].set_xlabel("Epochs")
     axs[1].set_xlabel("Epochs")
     axs[0].set_ylabel("PSNR")
@@ -420,8 +529,8 @@ def plot_result(num_epochs, train_psnrs, eval_psnrs, train_losses, eval_losses):
     try:
         from IPython.display import Image as ipython_image
     except ImportError:
-        print("Not running in Jupyter Notebook. Saving image to 'predicted.png'.")
-        timestamp_format=""%Y%m%d_%H%M%S_%f""
+        print("Not running in Jupyter Notebook. Saving image.")
+        timestamp_format = "%Y%m%d_%H%M%S_%f"
         timestamp = datetime.datetime.now().strftime(timestamp_format)
         plt.savefig(f'predicted_{timestamp}.png')
         plt.close()
@@ -437,7 +546,7 @@ def predict_and_display(model, test_dataloader, device):
             if idx >= 10:
                 break
             inputs = inputs.to(device)
-            predictions = model(inputs)
+            model(inputs)
             generate_images(model, inputs, labels, device=device)
 
 

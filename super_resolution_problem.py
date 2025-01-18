@@ -82,7 +82,8 @@ if __name__ == "__main__":
         metrics["valid_loss"]
     )
 
-    test_psnr, test_loss = evaluate_epoch(SR_unet_model_noskip, criterion, test_loader, device)
+    test_psnr, test_loss = evaluate_epoch(SR_unet_model_noskip, criterion,
+                                          test_loader, device)
     print(f'SR UNET NO SKIP:\t {test_psnr} \t {test_loss}')
 
     predict_and_display(SR_unet_model_noskip, train_loader, device)
@@ -121,6 +122,7 @@ if __name__ == "__main__":
         metrics["valid_loss"]
     )
 
-    test_psnr, test_loss = evaluate_epoch(SR_unet_model, criterion, test_loader, device)
+    test_psnr, test_loss = evaluate_epoch(SR_unet_model, criterion,
+                                          test_loader, device)
     print(f'SR Unet with skip connection: \t {test_psnr}, {test_loss}')
     predict_and_display(SR_unet_model, train_loader, device)
