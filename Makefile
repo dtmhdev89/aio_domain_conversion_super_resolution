@@ -46,11 +46,41 @@ export_requirements:
 
 # Clean up
 clean:
-	@if [-d "$(VENV_NAME)"]; then \
+	@if [ -d "$(VENV_NAME)" ]; then \
 		rm -rf $(VENV_NAME); \
-		echo "Remove $(VENV_NAME);" \
+		echo "Removed $(VENV_NAME)"; \
 	else \
 		echo "$(VENV_NAME) not found, nothing to remove."; \
+	fi
+
+clean_dataset:
+	@if [ -d "Khoa_LHR_image" ]; then \
+		rm -rf Khoa_LHR_image; \
+		echo "Removed Khoa_LHR_image folder"; \
+	else \
+		echo "Khoa_LHR_image not found, nothing to remove"; \
+	fi
+
+	@if [ -d "UNET" ]; then \
+		rm -rf UNET; \
+		echo "Removed UNET folder"; \
+	else \
+		echo "UNET not found, nothing to remove"; \
+	fi
+
+clean_cache:
+	@if [ -d "__pycache__" ]; then \
+		rm -rf __pycache__; \
+		echo "Removed __pycache__ folder"; \
+	else \
+		echo "__pycache__ not found, nothing to remove"; \
+	fi
+
+	@if [ -d ".mypy_cache" ]; then \
+		rm -rf .mypy_cache; \
+		echo "Removed .mypy_cache folder"; \
+	else \
+		echo ".mypy_cache not found, nothing to remove"; \
 	fi
 
 # Download dataset
@@ -66,7 +96,7 @@ run_super_resolution: unet_model.py super_resolution_problem.py
 run_image_inpainting: unet_model.py image_inpainting_problem.py
 	$(VENV_BIN)/$(PYTHON) image_inpainting_problem.py
 
-.PHONY: install_venv venv install libs_install export_requirements download_dataset run_super_resolution
+.PHONY: install_venv venv install libs_install export_requirements download_dataset run_super_resolution clean_dataset
 
 help:
 	@echo "Usage: make <target> [OPTIONS]"
